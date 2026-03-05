@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Nedev.PptxToPpt.Cli</RootNamespace>
+    <AssemblyName>Nedev.PptxToPpt.Cli</AssemblyName>
+    <Version>1.0.0</Version>
+    <Authors>Nedev</Authors>
+    <Description>PPTX to PPT converter CLI</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nedev.PptxToPpt\Nedev.PptxToPpt.csproj" />
+  </ItemGroup>
+
+</Project>
