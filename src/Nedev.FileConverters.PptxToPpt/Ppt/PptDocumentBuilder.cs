@@ -307,20 +307,62 @@ public sealed class PptDocumentBuilder
 
     private Record CreateGroupShapeRecord(XElement groupXml)
     {
-        // create header for the group shape itself
+        // create header for the group shape itself; we will encode translation,
+        // rotation and optional scale into the first 32 bytes so that downstream
+        // code can treat the data similarly to individual shapes.  Translation
+        // uses offsets 12/16, rotation sits at 20 and extents (scale) are stored
+        // at 24/28.  This required extending the header from 24 to 32 bytes.
         var ms = new MemoryStream();
         var writer = new BinaryWriter(ms);
 
-        var header = new byte[24];
+        var header = new byte[32];
         BitConverter.GetBytes((uint)0).CopyTo(header, 0);
         BitConverter.GetBytes((uint)_shapeIdCounter++).CopyTo(header, 4);
         BitConverter.GetBytes((uint)0).CopyTo(header, 8);
+        // default values (flags/offset) – will be overwritten if transform present
         BitConverter.GetBytes((uint)0x00180000).CopyTo(header, 12);
         BitConverter.GetBytes((uint)0).CopyTo(header, 16);
-        BitConverter.GetBytes((uint)0).CopyTo(header, 20);
+        BitConverter.GetBytes((uint)0).CopyTo(header, 20); // rotation default
+        BitConverter.GetBytes((uint)0).CopyTo(header, 24); // ext cx default
+        BitConverter.GetBytes((uint)0).CopyTo(header, 28); // ext cy default
+
+        // parse transform if present.  We cannot rely on the default namespace
+        // when navigating the drawingML-provided <a:grpSpPr>/<a:xfrm> tree, so use
+        // LocalName comparisons similar to the text-parsing helpers earlier in the
+        // file.
+        var grpPr = groupXml.Elements().FirstOrDefault(e => e.Name.LocalName == "grpSpPr");
+        var xfrm = grpPr?.Elements().FirstOrDefault(e => e.Name.LocalName == "xfrm");
+        if (xfrm != null)
+        {
+            var off = xfrm.Elements().FirstOrDefault(e => e.Name.LocalName == "off");
+            if (off != null)
+            {
+                if (int.TryParse(off.Attribute("x")?.Value, out var x))
+                    BitConverter.GetBytes(x).CopyTo(header, 12);
+                if (int.TryParse(off.Attribute("y")?.Value, out var y))
+                    BitConverter.GetBytes(y).CopyTo(header, 16);
+            }
+
+            var rotAttr = xfrm.Attribute("rot")?.Value;
+            if (!string.IsNullOrEmpty(rotAttr) && int.TryParse(rotAttr, out var rotation))
+            {
+                BitConverter.GetBytes(rotation).CopyTo(header, 20);
+            }
+
+            var ext = xfrm.Elements().FirstOrDefault(e => e.Name.LocalName == "ext");
+            if (ext != null)
+            {
+                if (int.TryParse(ext.Attribute("cx")?.Value, out var cx))
+                    BitConverter.GetBytes(cx).CopyTo(header, 24);
+                if (int.TryParse(ext.Attribute("cy")?.Value, out var cy))
+                    BitConverter.GetBytes(cy).CopyTo(header, 28);
+            }
+        }
+
         writer.Write(header);
 
-        // recurse into contained elements
+        // recurse into contained elements.  We still need the default namespace of
+        // the group itself for the Descendants calls below, so grab it here.
         var ns = groupXml.GetDefaultNamespace();
         foreach (var sp in groupXml.Descendants(ns + "sp"))
         {

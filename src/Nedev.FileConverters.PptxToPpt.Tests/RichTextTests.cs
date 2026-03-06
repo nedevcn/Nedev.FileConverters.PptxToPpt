@@ -268,6 +268,53 @@ namespace Nedev.FileConverters.PptxToPpt.Tests
         }
 
         [Fact]
+        public void GroupTransformationTranslationEncoded()
+        {
+            var xml = @"<sld xmlns=""http://schemas.openxmlformats.org/presentationml/2006/main"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"">
+  <cSld>
+    <spTree>
+      <grpSp>
+        <a:grpSpPr>
+          <a:xfrm rot=""12345"">
+            <a:off x=""100"" y=""200""/>
+            <a:ext cx=""500"" cy=""600""/>
+          </a:xfrm>
+        </a:grpSpPr>
+      </grpSp>
+    </spTree>
+  </cSld>
+</sld>";
+            var slide = new PptxSlide { Index = 0, Xml = XDocument.Parse(xml) };
+            var builder = new PptDocumentBuilder();
+            builder.AddSlide(slide);
+
+            var method = typeof(PptDocumentBuilder).GetMethod("CreateShapesFromSlide", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var list = (System.Collections.IList)method.Invoke(builder, new object[] { slide, null });
+            Assert.NotEmpty(list);
+            object? groupRec = null;
+            foreach (var o in list)
+            {
+                var typeProp = o.GetType().GetProperty("Type");
+                if (typeProp != null && (RecordType)typeProp.GetValue(o) == RecordType.RT_GroupShape)
+                {
+                    groupRec = o;
+                    break;
+                }
+            }
+            Assert.NotNull(groupRec);
+            var data = (byte[])groupRec.GetType().GetProperty("Data").GetValue(groupRec);
+
+            // translation encoded at offsets 12 and 16
+            Assert.Equal(100, BitConverter.ToInt32(data, 12));
+            Assert.Equal(200, BitConverter.ToInt32(data, 16));
+            // rotation should land at offset 20 (same as simple shapes)
+            Assert.Equal(12345, BitConverter.ToInt32(data, 20));
+            // scale/extents stored after the rotation
+            Assert.Equal(500, BitConverter.ToInt32(data, 24));
+            Assert.Equal(600, BitConverter.ToInt32(data, 28));
+        }
+
+        [Fact]
         public void GroupShapeRecursesAndConnectorsIncluded()
         {
             var xml = @"<sld xmlns=""http://schemas.openxmlformats.org/presentationml/2006/main"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"">

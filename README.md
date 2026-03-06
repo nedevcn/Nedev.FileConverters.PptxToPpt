@@ -35,6 +35,7 @@ The converter currently understands and reproduces the following PPTX constructs
 - ✅ Slide markup and layout
 - ✅ Text boxes with run‑level font/size/bold/italic/underline/color and simple bullets (character or auto-number)
 - ✅ Primitive shapes (rectangle, ellipse, line, etc.)
+- ✅ Grouped shapes with basic translation (now with scale and rotation encoded)
 - ✅ Embedded images (JPEG/PNG)
 - ✅ Slide notes
 - ✅ Simple master slide information
@@ -47,7 +48,7 @@ The converter currently understands and reproduces the following PPTX constructs
 The following enhancements are planned for future releases:
 
 1. **Advanced text formatting** – paragraph styles and numbering (basic bullets and colors/underlines now supported).
-2. **Complex shapes & SmartArt** – groups, Bézier paths, and custom geometry.
+2. **Complex shapes & SmartArt** – groups (including better scaling/rotation semantics), Bézier paths, and custom geometry.
 3. **Tables & Charts** – full fidelity conversion of PPTX tables and embedded Office charts.
 4. **Animations & Transitions** – approximate effects in binary PPT.
 5. **Audio/Video** – embed multimedia streams and control metadata.
