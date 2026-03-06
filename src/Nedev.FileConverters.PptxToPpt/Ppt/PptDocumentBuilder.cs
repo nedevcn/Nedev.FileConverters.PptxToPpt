@@ -306,23 +306,91 @@ public sealed class PptDocumentBuilder
         // name is "p".
         var paragraphs = txBody.Elements().Where(e => e.Name.LocalName == "p").ToList();
 
+        // counters for auto-number by level
+        var counters = new int[10];
+        int prevLevel = 0;
+        var defaultGlyphs = new[] { "•", "○", "▪", "–" };
+
         foreach (var para in paragraphs)
         {
-            records.Add(CreateParagraphRecord(para));
+            var pPr = para.Elements().FirstOrDefault(e => e.Name.LocalName == "pPr");
+            int level = 0;
+            string prefix = string.Empty;
+
+            if (pPr != null)
+            {
+                var lvlAttr = pPr.Attribute("lvl")?.Value;
+                if (!string.IsNullOrEmpty(lvlAttr) && int.TryParse(lvlAttr, out var lvl))
+                    level = lvl;
+
+                // handle automatic numbering
+                var auto = pPr.Elements().FirstOrDefault(e => e.Name.LocalName == "buAutoNum");
+                if (auto != null)
+                {
+                    // reset deeper counters when level decreases
+                    if (level <= prevLevel)
+                    {
+                        for (int i = level + 1; i < counters.Length; i++)
+                            counters[i] = 0;
+                    }
+                    counters[level]++;
+                    var type = auto.Attribute("type")?.Value;
+                    prefix = FormatAuto(type, counters[level]);
+                }
+
+                // explicit bullet character
+                var buChar = pPr.Elements().FirstOrDefault(e => e.Name.LocalName == "buChar");
+                if (buChar != null)
+                {
+                    prefix = buChar.Attribute("char")?.Value ?? string.Empty;
+                }
+
+                prevLevel = level;
+            }
+
+            // if still no prefix, supply default glyph by level
+            if (string.IsNullOrEmpty(prefix))
+            {
+                int idx = Math.Min(level, defaultGlyphs.Length - 1);
+                prefix = defaultGlyphs[idx];
+            }
+
+            records.Add(CreateParagraphRecord(para, prefix));
         }
 
         return records;
     }
 
-    private Record CreateParagraphRecord(XElement para)
+    private Record CreateParagraphRecord(XElement para, string bulletPrefix = "")
     {
         // paragraph element may be in a namespace such as drawing;
         // ignore namespace when looking for runs and text nodes.
+        string bulletChar = bulletPrefix;
+        string alignment = string.Empty;
+        int level = 0;
+        var pPr = para.Elements().FirstOrDefault(e => e.Name.LocalName == "pPr");
+        if (pPr != null)
+        {
+            // explicit bullet character wins over prefix
+            var buChar = pPr.Elements().FirstOrDefault(e => e.Name.LocalName == "buChar");
+            if (buChar != null)
+            {
+                bulletChar = buChar.Attribute("char")?.Value ?? string.Empty;
+            }
+
+            // paragraph alignment attribute
+            alignment = pPr.Attribute("algn")?.Value ?? string.Empty;
+
+            var lvlAttr = pPr.Attribute("lvl")?.Value;
+            if (!string.IsNullOrEmpty(lvlAttr) && int.TryParse(lvlAttr, out var lvl))
+                level = lvl;
+        }
+
         var paraFormat = new Record
         {
             Type = RecordType.RT_TextParaFormatAtom,
             Version = 0x0FEA,
-            Data = CreateParaFormatData()
+            Data = CreateParaFormatData(alignment, level)
         };
 
         // gather runs by local name "r" regardless of namespace
@@ -341,21 +409,29 @@ public sealed class PptDocumentBuilder
         writer.Write(paraFormat.ToArray());
         writer.Write(headerAtom.ToArray());
 
+        bool firstRun = true;
         foreach (var run in runs)
         {
             // get text content ignoring namespace
             var t = run.Elements().FirstOrDefault(e => e.Name.LocalName == "t");
             var runText = t != null ? t.Value : string.Empty;
 
+            // prepend bullet character on first run if present
+            if (firstRun && !string.IsNullOrEmpty(bulletChar))
+            {
+                runText = bulletChar + " " + runText;
+            }
+            firstRun = false;
+
             // determine formatting information from the run
-            var (fontIndex, bold, italic, fontSize) = GetRunFormat(run);
+            var (fontIndex, bold, italic, fontSize, colorRgb, underline) = GetRunFormat(run);
 
             // write a char format atom for this run
             var charFormat = new Record
             {
                 Type = RecordType.RT_TextCharFormatAtom,
                 Version = 0x03E4,
-                Data = CreateTextCharFormatData(runText.Length, fontIndex, bold, italic, fontSize)
+                Data = CreateTextCharFormatData(runText.Length, fontIndex, bold, italic, fontSize, colorRgb, underline)
             };
             writer.Write(charFormat.ToArray());
 
@@ -377,16 +453,68 @@ public sealed class PptDocumentBuilder
         };
     }
 
-    private byte[] CreateParaFormatData()
+    private byte[] CreateParaFormatData(string alignment = "", int level = 0)
     {
         var data = new byte[12];
-        data[0] = 0x00;
-        data[1] = 0x00;
+        // byte 0 encodes alignment: left=0, center=1, right=2, justify=3
+        switch (alignment)
+        {
+            case "ctr": data[0] = 1; break;
+            case "r": data[0] = 2; break;
+            case "just": data[0] = 3; break;
+            default: data[0] = 0; break; // left or unspecified
+        }
+        // byte 1 may hold indentation level (not used by PPT writer yet)
+        data[1] = (byte)level;
+
+        // remaining bytes currently hardcoded
         data[2] = 0x00;
         data[3] = 0x00;
         BitConverter.GetBytes((uint)0x00000001).CopyTo(data, 4);
         BitConverter.GetBytes((uint)0x00000000).CopyTo(data, 8);
         return data;
+    }
+
+    // helper for automatic list prefixes
+    private string FormatAuto(string? type, int count)
+    {
+        if (string.IsNullOrEmpty(type))
+            return count + ".";
+
+        switch (type)
+        {
+            case "alphaLc":
+                return ((char)('a' + (count - 1) % 26)) + ".";
+            case "alphaUc":
+                return ((char)('A' + (count - 1) % 26)) + ".";
+            case "romanLc":
+                return ToRoman(count).ToLowerInvariant() + ".";
+            case "romanUc":
+                return ToRoman(count).ToUpperInvariant() + ".";
+            default:
+                return count + ".";
+        }
+    }
+
+    private string ToRoman(int number)
+    {
+        if (number < 1) return string.Empty;
+        var numerals = new[]
+        {
+            Tuple.Create(1000, "M"), Tuple.Create(900, "CM"), Tuple.Create(500, "D"), Tuple.Create(400, "CD"),
+            Tuple.Create(100, "C"), Tuple.Create(90, "XC"), Tuple.Create(50, "L"), Tuple.Create(40, "XL"),
+            Tuple.Create(10, "X"), Tuple.Create(9, "IX"), Tuple.Create(5, "V"), Tuple.Create(4, "IV"), Tuple.Create(1, "I")
+        };
+        var result = new StringBuilder();
+        foreach (var pair in numerals)
+        {
+            while (number >= pair.Item1)
+            {
+                result.Append(pair.Item2);
+                number -= pair.Item1;
+            }
+        }
+        return result.ToString();
     }
 
     private byte[] CreateTextHeaderData()
@@ -401,21 +529,25 @@ public sealed class PptDocumentBuilder
     }
 
     /// <summary>
-    /// Creates the binary payload for a TextCharFormatAtom.  We only support
-    /// a small subset of formatting (font index, bold, italic) for now.
+    /// Creates the binary payload for a TextCharFormatAtom.  We support
+    /// a small subset of formatting: font index, size, bold, italic,
+    /// underline, and an RGB color value.  Additional flags and fields
+    /// are reserved for future expansion.
     /// </summary>
-    private byte[] CreateTextCharFormatData(int runLength, ushort fontIndex, bool bold, bool italic, ushort fontSize = 0)
+    private byte[] CreateTextCharFormatData(int runLength, ushort fontIndex, bool bold, bool italic, ushort fontSize = 0, uint colorRgb = 0, bool underline = false)
     {
-        // Layout: [length:4][fontIdx:2][size:2][flags:2][reserved:2]
-        var data = new byte[14];
+        // Extended layout: [length:4][fontIdx:2][size:2][flags:2][reserved:2][color:4]
+        var data = new byte[18];
         BitConverter.GetBytes((uint)runLength).CopyTo(data, 0);
         BitConverter.GetBytes(fontIndex).CopyTo(data, 4);
         BitConverter.GetBytes(fontSize).CopyTo(data, 6);
         ushort flags = 0;
         if (bold) flags |= 0x0001;
         if (italic) flags |= 0x0002;
+        if (underline) flags |= 0x0004; // new flag for underline
         BitConverter.GetBytes(flags).CopyTo(data, 8);
-        // remaining 2 bytes reserved (offset 10..11) and extra bytes left zero
+        // bytes 10..11 reserved
+        BitConverter.GetBytes(colorRgb).CopyTo(data, 12);
         return data;
     }
 
@@ -423,12 +555,14 @@ public sealed class PptDocumentBuilder
     /// Inspect a &lt;r&gt; run element and determine the corresponding
     /// font index (ensuring the font is registered) and style flags.
     /// </summary>
-    private (ushort fontIndex, bool bold, bool italic, ushort size) GetRunFormat(XElement run)
+    private (ushort fontIndex, bool bold, bool italic, ushort size, uint colorRgb, bool underline) GetRunFormat(XElement run)
     {
         bool bold = false;
         bool italic = false;
+        bool underline = false;
         ushort fontIndex = 0;
         ushort size = 0;
+        uint colorRgb = 0;
 
         // ignore namespace when inspecting run properties
         var rPr = run.Elements().FirstOrDefault(e => e.Name.LocalName == "rPr");
@@ -440,6 +574,11 @@ public sealed class PptDocumentBuilder
             var iAttr = rPr.Attribute("i")?.Value;
             if (!string.IsNullOrEmpty(iAttr) && (iAttr == "1" || iAttr.Equals("true", StringComparison.OrdinalIgnoreCase)))
                 italic = true;
+
+            // underline attribute (val may be "sng", "dbl", etc.).
+            var uAttr = rPr.Attribute("u")?.Value;
+            if (!string.IsNullOrEmpty(uAttr) && !uAttr.Equals("none", StringComparison.OrdinalIgnoreCase))
+                underline = true;
 
             var szAttr = rPr.Attribute("sz")?.Value;
             if (!string.IsNullOrEmpty(szAttr) && ushort.TryParse(szAttr, out var szValue))
@@ -456,9 +595,21 @@ public sealed class PptDocumentBuilder
                     fontIndex = AddFont(face);
                 }
             }
+
+            // parse color if present (we only look for simple srgbClr values)
+            var solidFill = rPr.Elements().FirstOrDefault(e => e.Name.LocalName == "solidFill");
+            if (solidFill != null)
+            {
+                var srgb = solidFill.Descendants().FirstOrDefault(e => e.Name.LocalName == "srgbClr");
+                var val = srgb?.Attribute("val")?.Value;
+                if (!string.IsNullOrEmpty(val) && uint.TryParse(val, System.Globalization.NumberStyles.HexNumber, null, out var rgb))
+                {
+                    colorRgb = rgb;
+                }
+            }
         }
 
-        return (fontIndex, bold, italic, size);
+        return (fontIndex, bold, italic, size, colorRgb, underline);
     }
 
     private byte[] CreateTextBytesData(string text)

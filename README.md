@@ -23,7 +23,7 @@ The converter already handles basic slides, text, images, and shapes, and it now
 - 🔧 **Self‑contained .NET** – written entirely in C#; only dependency is `Nedev.FileConverters.Core`.
 - 📄 **CFBF Writer** – a homegrown implementation of Microsoft’s Compound File Binary Format (MS‑CFB) enables creation of `.ppt` containers.
 - 🔄 **Conversion Engine** – parses `.pptx` files (Open XML) and generates binary PPT slides, text boxes, and simple shapes.
-- 🎨 **Rich Text Formatting** – run‑level support for font, size, bold, and italic formatting.
+- 🎨 **Rich Text Formatting** – run‑level support for font, size, bold, italic, underline and color; paragraph styles include basic alignment/level; bullet detection (character or auto‑number) prepends text.
 - 🖼️ **Image Embedding** – handles JPEG/PNG slides pictures.
 - 🖥️ **CLI Application** – command‑line wrapper for batch conversions.
 - ⚡ **Performance‑oriented** – small memory footprint and fast processing suitable for server environments.
@@ -33,7 +33,7 @@ The converter already handles basic slides, text, images, and shapes, and it now
 The converter currently understands and reproduces the following PPTX constructs:
 
 - ✅ Slide markup and layout
-- ✅ Text boxes with run‑level font/size/bold/italic
+- ✅ Text boxes with run‑level font/size/bold/italic/underline/color and simple bullets (character or auto-number)
 - ✅ Primitive shapes (rectangle, ellipse, line, etc.)
 - ✅ Embedded images (JPEG/PNG)
 - ✅ Slide notes
@@ -46,7 +46,7 @@ The converter currently understands and reproduces the following PPTX constructs
 
 The following enhancements are planned for future releases:
 
-1. **Advanced text formatting** – paragraph styles, bullets/numbering, colors, underlines.
+1. **Advanced text formatting** – paragraph styles and numbering (basic bullets and colors/underlines now supported).
 2. **Complex shapes & SmartArt** – groups, Bézier paths, and custom geometry.
 3. **Tables & Charts** – full fidelity conversion of PPTX tables and embedded Office charts.
 4. **Animations & Transitions** – approximate effects in binary PPT.
