@@ -362,6 +362,47 @@ namespace Nedev.FileConverters.PptxToPpt.Tests
         }
 
         [Fact]
+        public void ConnectorEndpointsEncoded()
+        {
+            var xml = @"<sld xmlns=""http://schemas.openxmlformats.org/presentationml/2006/main"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"">
+  <cSld>
+    <spTree>
+      <cxnSp>
+        <a:spPr>
+          <a:st x=""10"" y=""20""/>
+          <a:end x=""30"" y=""40""/>
+        </a:spPr>
+      </cxnSp>
+    </spTree>
+  </cSld>
+</sld>";
+            var slide = new PptxSlide { Index = 0, Xml = XDocument.Parse(xml) };
+            var builder = new PptDocumentBuilder();
+            builder.AddSlide(slide);
+
+            var method = typeof(PptDocumentBuilder).GetMethod("CreateShapesFromSlide", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var list = (System.Collections.IList)method.Invoke(builder, new object[] { slide, null });
+            Assert.NotEmpty(list);
+            object? connRec = null;
+            foreach (var o in list)
+            {
+                var typeProp = o.GetType().GetProperty("Type");
+                if (typeProp != null && (RecordType)typeProp.GetValue(o) == RecordType.RT_Shape)
+                {
+                    connRec = o;
+                    break;
+                }
+            }
+            Assert.NotNull(connRec);
+            var data = (byte[])connRec.GetType().GetProperty("Data").GetValue(connRec);
+            Assert.Equal(32, data.Length);
+            Assert.Equal(10, BitConverter.ToInt32(data, 12));
+            Assert.Equal(20, BitConverter.ToInt32(data, 16));
+            Assert.Equal(30, BitConverter.ToInt32(data, 20));
+            Assert.Equal(40, BitConverter.ToInt32(data, 24));
+        }
+
+        [Fact]
         public void GroupShapeRecursesAndConnectorsIncluded()
         {
             var xml = @"<sld xmlns=""http://schemas.openxmlformats.org/presentationml/2006/main"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"">

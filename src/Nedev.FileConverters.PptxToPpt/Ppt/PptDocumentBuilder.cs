@@ -312,14 +312,39 @@ public sealed class PptDocumentBuilder
 
     private Record CreateConnectorRecord(XElement cxnXml)
     {
-        // treat connector as a simple shape for now; ID incremented etc.
-        var data = new byte[24];
+        // connectors get a slightly larger header so we can store both start and
+        // end coordinates.  we'll allocate 32 bytes and use offsets 12/16 for the
+        // starting point and 20/24 for the ending point; remaining bytes stay
+        // zeroed.
+        var data = new byte[32];
         BitConverter.GetBytes((uint)0).CopyTo(data, 0);
         BitConverter.GetBytes((uint)_shapeIdCounter++).CopyTo(data, 4);
         BitConverter.GetBytes((uint)0).CopyTo(data, 8);
-        BitConverter.GetBytes((uint)0x00180000).CopyTo(data, 12);
-        BitConverter.GetBytes((uint)0).CopyTo(data, 16);
-        BitConverter.GetBytes((uint)0).CopyTo(data, 20);
+        BitConverter.GetBytes((uint)0x00180000).CopyTo(data, 12); // start x default
+        BitConverter.GetBytes((uint)0).CopyTo(data, 16);          // start y default
+        BitConverter.GetBytes((uint)0).CopyTo(data, 20);          // end x default
+        BitConverter.GetBytes((uint)0).CopyTo(data, 24);          // end y default
+        // extra padding at 28..31 remains zero
+
+        // parse any <st> or <end> elements anywhere under the connector XML;
+        // namespace may vary so match LocalName.
+        var startElem = cxnXml.Descendants().FirstOrDefault(e => e.Name.LocalName == "st");
+        if (startElem != null)
+        {
+            if (int.TryParse(startElem.Attribute("x")?.Value, out var sx))
+                BitConverter.GetBytes(sx).CopyTo(data, 12);
+            if (int.TryParse(startElem.Attribute("y")?.Value, out var sy))
+                BitConverter.GetBytes(sy).CopyTo(data, 16);
+        }
+        var endElem = cxnXml.Descendants().FirstOrDefault(e => e.Name.LocalName == "end");
+        if (endElem != null)
+        {
+            if (int.TryParse(endElem.Attribute("x")?.Value, out var ex))
+                BitConverter.GetBytes(ex).CopyTo(data, 20);
+            if (int.TryParse(endElem.Attribute("y")?.Value, out var ey))
+                BitConverter.GetBytes(ey).CopyTo(data, 24);
+        }
+
         return new Record
         {
             Type = RecordType.RT_Shape,
