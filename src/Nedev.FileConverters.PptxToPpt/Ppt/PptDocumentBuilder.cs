@@ -259,6 +259,10 @@ public sealed class PptDocumentBuilder
 
     private byte[] CreateShapeAtomData(XElement shapeXml)
     {
+        // 32‑byte shape atom header.  Bytes 12/16 currently hold location data in
+        // PPT records, byte 20 is rotation (1/60000ths of a degree), and bytes
+        // 24/28 are usually used for extents.  We default the flags at offset 12
+        // similar to how they were originally hard‑coded.
         var data = new byte[32];
 
         BitConverter.GetBytes((uint)0).CopyTo(data, 0);
@@ -267,19 +271,38 @@ public sealed class PptDocumentBuilder
         BitConverter.GetBytes((uint)0x000A0000).CopyTo(data, 12);
         BitConverter.GetBytes((uint)0x00010000).CopyTo(data, 16);
 
-        var spPr = shapeXml.Element(shapeXml.GetDefaultNamespace() + "spPr");
+        // shape properties may use DrawingML namespace prefixes, so traverse by LocalName
+        var spPr = shapeXml.Elements().FirstOrDefault(e => e.Name.LocalName == "spPr");
         if (spPr != null)
         {
-            var xfrm = spPr.Element(spPr.GetDefaultNamespace() + "xfrm");
+            var xfrm = spPr.Elements().FirstOrDefault(e => e.Name.LocalName == "xfrm");
             if (xfrm != null)
             {
-                var rot = xfrm.Attribute("rot")?.Value;
-                if (!string.IsNullOrEmpty(rot))
+                // parse offset
+                var off = xfrm.Elements().FirstOrDefault(e => e.Name.LocalName == "off");
+                if (off != null)
                 {
-                    if (int.TryParse(rot, out int rotation))
-                    {
-                        BitConverter.GetBytes(rotation).CopyTo(data, 20);
-                    }
+                    if (int.TryParse(off.Attribute("x")?.Value, out var x))
+                        BitConverter.GetBytes(x).CopyTo(data, 12);
+                    if (int.TryParse(off.Attribute("y")?.Value, out var y))
+                        BitConverter.GetBytes(y).CopyTo(data, 16);
+                }
+
+                // rotation attribute (same semantics as group)
+                var rot = xfrm.Attribute("rot")?.Value;
+                if (!string.IsNullOrEmpty(rot) && int.TryParse(rot, out int rotation))
+                {
+                    BitConverter.GetBytes(rotation).CopyTo(data, 20);
+                }
+
+                // extents (scale)
+                var ext = xfrm.Elements().FirstOrDefault(e => e.Name.LocalName == "ext");
+                if (ext != null)
+                {
+                    if (int.TryParse(ext.Attribute("cx")?.Value, out var cx))
+                        BitConverter.GetBytes(cx).CopyTo(data, 24);
+                    if (int.TryParse(ext.Attribute("cy")?.Value, out var cy))
+                        BitConverter.GetBytes(cy).CopyTo(data, 28);
                 }
             }
         }

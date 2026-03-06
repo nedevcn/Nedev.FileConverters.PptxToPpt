@@ -315,6 +315,53 @@ namespace Nedev.FileConverters.PptxToPpt.Tests
         }
 
         [Fact]
+        public void ShapeTransformationEncoded()
+        {
+            var xml = @"<sld xmlns=""http://schemas.openxmlformats.org/presentationml/2006/main"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"">
+  <cSld>
+    <spTree>
+      <sp>
+        <a:spPr>
+          <a:xfrm rot=""54321"">
+            <a:off x=""30"" y=""40""/>
+            <a:ext cx=""70"" cy=""80""/>
+          </a:xfrm>
+        </a:spPr>
+      </sp>
+    </spTree>
+  </cSld>
+</sld>";
+            var slide = new PptxSlide { Index = 0, Xml = XDocument.Parse(xml) };
+            var builder = new PptDocumentBuilder();
+            builder.AddSlide(slide);
+
+            var method = typeof(PptDocumentBuilder).GetMethod("CreateShapesFromSlide", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var list = (System.Collections.IList)method.Invoke(builder, new object[] { slide, null });
+            Assert.NotEmpty(list);
+            object? shapeRec = null;
+            foreach (var o in list)
+            {
+                var typeProp = o.GetType().GetProperty("Type");
+                if (typeProp != null && (RecordType)typeProp.GetValue(o) == RecordType.RT_Container)
+                {
+                    shapeRec = o;
+                    break;
+                }
+            }
+            Assert.NotNull(shapeRec);
+            var data = (byte[])shapeRec.GetType().GetProperty("Data").GetValue(shapeRec);
+
+            // container.Data includes an 8-byte record header before the actual
+            // shape atom, so add 8 to each offset when inspecting.
+            int baseOffset = 8;
+            Assert.Equal(30, BitConverter.ToInt32(data, baseOffset + 12));
+            Assert.Equal(40, BitConverter.ToInt32(data, baseOffset + 16));
+            Assert.Equal(54321, BitConverter.ToInt32(data, baseOffset + 20));
+            Assert.Equal(70, BitConverter.ToInt32(data, baseOffset + 24));
+            Assert.Equal(80, BitConverter.ToInt32(data, baseOffset + 28));
+        }
+
+        [Fact]
         public void GroupShapeRecursesAndConnectorsIncluded()
         {
             var xml = @"<sld xmlns=""http://schemas.openxmlformats.org/presentationml/2006/main"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"">
