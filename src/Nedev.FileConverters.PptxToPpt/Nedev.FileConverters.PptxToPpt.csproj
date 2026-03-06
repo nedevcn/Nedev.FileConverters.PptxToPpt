@@ -11,7 +11,17 @@
     <Version>0.1.0</Version>
     <Authors>Nedev</Authors>
     <Description>PPTX to PPT converter</Description>
+    <!-- include README and license in the NuGet package -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <RepositoryUrl>https://github.com/nedevcn/Nedev.FileConverters.DocxToPdf</RepositoryUrl>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- include files located at repo root -->
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Nedev.FileConverters.Core" Version="0.1.0" />

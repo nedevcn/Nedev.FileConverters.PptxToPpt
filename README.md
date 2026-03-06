@@ -4,6 +4,8 @@ PPTX to PPT converter - convert PowerPoint Open XML (.pptx) to legacy binary for
 
 This project has no third‑party dependencies other than the Core package.
 
+Licensed under the [MIT License](LICENSE).
+
 ## Project Status: Functional Prototype (Current)
 
 This project is currently in early development. It provides a functional foundation for converting PPTX files to the legacy PPT format. While core features like text and basic shapes are supported, advanced formatting and complex elements are still in development.
