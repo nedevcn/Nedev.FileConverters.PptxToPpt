@@ -1,6 +1,8 @@
-# Nedev.PptxToPpt
+# Nedev.FileConverters.PptxToPpt
 
-PPTX to PPT converter - convert PowerPoint Open XML (.pptx) to legacy binary format (.ppt) with high performance and zero third-party dependencies.
+PPTX to PPT converter - convert PowerPoint Open XML (.pptx) to legacy binary format (.ppt) with high performance. This library also integrates with the `Nedev.FileConverters.Core` NuGet package: a file‑converter adapter is registered automatically so that the core's static converter/registry can be used by other projects.
+
+This project has no third‑party dependencies other than the Core package.
 
 ## Project Status: Functional Prototype (Current)
 
@@ -38,33 +40,87 @@ This project is currently in early development. It provides a functional foundat
 
 ```
 src/
-├── Nedev.PptxToPpt/           # Core library
+├── Nedev.FileConverters.PptxToPpt/           # Core library (depends on Nedev.FileConverters.Core NuGet package)
 │   ├── Cff/                    # Compound File Format writer (MS-CFB)
 │   ├── Ppt/                    # PPT binary format generator (MS-PPT)
 │   ├── Pptx/                   # PPTX parser (OpenXML)
 │   └── Conversion/             # High-level conversion orchestrator
-└── Nedev.PptxToPpt.Cli/        # Command-line interface application
+└── Nedev.FileConverters.PptxToPpt.Cli/        # Command-line interface application
 ```
 
-## Usage
+## CLI Usage
 
 ```bash
 # Convert single file
-dotnet run --project src/Nedev.PptxToPpt.Cli input.pptx
+dotnet run --project src/Nedev.FileConverters.PptxToPpt.Cli input.pptx  # uses Nedev.FileConverters.Core NuGet package for logging/exception
 
 # Specify output directory
-dotnet run --project src/Nedev.PptxToPpt.Cli -o output input.pptx
+dotnet run --project src/Nedev.FileConverters.PptxToPpt.Cli -o output input.pptx
 
 # Batch convert
-dotnet run --project src/Nedev.PptxToPpt.Cli -f *.pptx
+dotnet run --project src/Nedev.FileConverters.PptxToPpt.Cli -f *.pptx
 ```
+
+## Library Usage
+
+This project produces a nuget package (`Nedev.FileConverters.PptxToPpt`) containing
+both `net8.0` and `netstandard2.1` builds. To consume in another project:
+
+1. Add a package reference:
+    ```xml
+    <PackageReference Include="Nedev.FileConverters.PptxToPpt" Version="0.1.0" />
+    ```
+   or run `dotnet add package Nedev.FileConverters.PptxToPpt --version 0.1.0`.
+
+2. Call the static converter exposed by the package:
+    ```csharp
+    using (var input = File.OpenRead("presentation.pptx"))
+    using (var output = Nedev.FileConverters.Converter.Convert(input, "pptx", "ppt"))
+    using (var fs = File.Create("presentation.ppt"))
+    {
+        output.CopyTo(fs);
+    }
+    ```
+
+3. **Implementing `IFileConverter`**
+
+   The core package defines an interface:
+   ```csharp
+   namespace Nedev.FileConverters.Core {
+       public interface IFileConverter {
+           Stream Convert(Stream input);
+       }
+   }
+   ```
+   You can implement this in your own library to register new conversions. A sample
+   adapter already exists in this repo (`Conversion/PptxToPptFileConverter.cs`):
+   it writes the incoming stream to temporary files and delegates to the internal
+   converter logic.
+
+   To register a converter, use the DI extension method provided by the core
+   package:
+   ```csharp
+   var services = new ServiceCollection();
+   services.AddFileConverter("pptx","ppt", new PptxToPptFileConverter());
+   var provider = services.BuildServiceProvider();
+   ```
+   After registration the converter becomes available through
+   `Nedev.FileConverters.Converter.Convert(...)` or the `ConverterRegistry`.
+
+   You may decorate your implementation with the `[FileConverter]` attribute
+   to allow automatic discovery when the package scans assemblies.
+
+---
+
+The CLI application demonstrates both the basic usage and how the adapter is
+registered on startup; refer to its `Program.cs` for a working example.
 
 ## Build
 
 Built with the new .NET 10 features.
 
 ```bash
-dotnet build Nedev.PptxToPpt.slnx
+dotnet build src/Nedev.FileConverters.PptxToPpt.slnx
 ```
 
 ## Requirements

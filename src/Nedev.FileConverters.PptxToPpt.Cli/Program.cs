@@ -1,6 +1,8 @@
-using Nedev.PptxToPpt.Conversion;
+using Nedev.FileConverters.PptxToPpt.Conversion;
+using Nedev.FileConverters.Core;
+using Microsoft.Extensions.DependencyInjection;
 
-namespace Nedev.PptxToPpt.Cli;
+namespace Nedev.FileConverters.PptxToPpt.Cli;
 
 public sealed class Program
 {
@@ -59,7 +61,11 @@ public sealed class Program
             return 1;
         }
 
-        var converter = new Converter();
+        // ensure core package knows about our converter via DI extension
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddFileConverter("pptx", "ppt", new PptxToPptFileConverter());
+        _ = services.BuildServiceProvider();
+
         var successCount = 0;
         var failCount = 0;
 
@@ -91,7 +97,12 @@ public sealed class Program
                 if (options.Verbose)
                     Console.WriteLine($"Converting: {inputFile} -> {outputPath}");
 
-                await converter.ConvertAsync(inputFile, outputPath);
+                // use the static converter provided by core package
+                using var inputStream = File.OpenRead(inputFile);
+                using var converted = Nedev.FileConverters.Converter.Convert(inputStream, "pptx", "ppt");
+                using var outFs = File.Create(outputPath);
+                converted.CopyTo(outFs);
+
                 successCount++;
 
                 if (options.Verbose)
@@ -111,10 +122,10 @@ public sealed class Program
 
     private static void PrintUsage()
     {
-        Console.WriteLine("Nedev.PptxToPpt - PPTX to PPT Converter");
+        Console.WriteLine("Nedev.FileConverters.PptxToPpt - PPTX to PPT Converter");
         Console.WriteLine();
         Console.WriteLine("Usage:");
-        Console.WriteLine("  Nedev.PptxToPpt [options] <input files or directories>");
+        Console.WriteLine("  Nedev.FileConverters.PptxToPpt [options] <input files or directories>");
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  -o, --output <directory>  Output directory");
@@ -123,9 +134,9 @@ public sealed class Program
         Console.WriteLine("  -h, --help                 Show this help");
         Console.WriteLine();
         Console.WriteLine("Examples:");
-        Console.WriteLine("  Nedev.PptxToPpt file.pptx");
-        Console.WriteLine("  Nedev.PptxToPpt -o output file.pptx");
-        Console.WriteLine("  Nedev.PptxToPpt -f *.pptx");
-        Console.WriteLine("  Nedev.PptxToPpt -o outputdir folder/");
+        Console.WriteLine("  Nedev.FileConverters.PptxToPpt file.pptx");
+        Console.WriteLine("  Nedev.FileConverters.PptxToPpt -o output file.pptx");
+        Console.WriteLine("  Nedev.FileConverters.PptxToPpt -f *.pptx");
+        Console.WriteLine("  Nedev.FileConverters.PptxToPpt -o outputdir folder/");
     }
 }

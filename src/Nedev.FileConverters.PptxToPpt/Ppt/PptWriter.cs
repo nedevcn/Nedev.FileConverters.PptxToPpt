@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Nedev.PptxToPpt.Ppt;
+namespace Nedev.FileConverters.PptxToPpt.Ppt;
 
 public sealed class PptWriter : IDisposable
 {

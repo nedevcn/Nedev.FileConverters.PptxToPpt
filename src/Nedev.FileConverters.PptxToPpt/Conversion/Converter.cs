@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using Nedev.PptxToPpt.Ppt;
-using Nedev.PptxToPpt.Pptx;
+using Nedev.FileConverters.PptxToPpt.Ppt;
+using Nedev.FileConverters.PptxToPpt.Pptx;
 
-namespace Nedev.PptxToPpt.Conversion;
+namespace Nedev.FileConverters.PptxToPpt.Conversion;
 
 public sealed class Converter
 {

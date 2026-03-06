@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Nedev.PptxToPpt.Cff;
+namespace Nedev.FileConverters.PptxToPpt.Cff;
 
 public sealed class CffWriter : IDisposable
 {

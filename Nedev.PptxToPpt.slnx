@@ -1,6 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/Nedev.PptxToPpt.Cli/Nedev.PptxToPpt.Cli.csproj" />
-    <Project Path="src/Nedev.PptxToPpt/Nedev.PptxToPpt.csproj" />
-  </Folder>
-</Solution>

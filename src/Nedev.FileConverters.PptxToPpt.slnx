@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="Nedev.FileConverters.PptxToPpt.Cli/Nedev.FileConverters.PptxToPpt.Cli.csproj" />
+    <Project Path="Nedev.FileConverters.PptxToPpt/Nedev.FileConverters.PptxToPpt.csproj" />
+  </Folder>
+</Solution>

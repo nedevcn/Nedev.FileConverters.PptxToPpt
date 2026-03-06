@@ -1,8 +1,8 @@
 using System.Text;
 using System.Xml.Linq;
-using Nedev.PptxToPpt.Pptx;
+using Nedev.FileConverters.PptxToPpt.Pptx;
 
-namespace Nedev.PptxToPpt.Ppt;
+namespace Nedev.FileConverters.PptxToPpt.Ppt;
 
 public sealed class PptDocumentBuilder
 {

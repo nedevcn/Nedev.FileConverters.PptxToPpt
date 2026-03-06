@@ -1,7 +1,7 @@
 using System.IO.Compression;
 using System.Xml.Linq;
 
-namespace Nedev.PptxToPpt.Pptx;
+namespace Nedev.FileConverters.PptxToPpt.Pptx;
 
 public sealed class PptxDocument : IDisposable
 {
