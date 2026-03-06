@@ -238,18 +238,20 @@ public sealed class CffWriter : IDisposable
         
         for (int i = 0; i < dirSectorCount; i++)
         {
-            var sectorData = new byte[128];
-            int entriesInThisSector = Math.Min(_directories.Count - i * 4, 4);
+            // allocate a full sector; each directory entry is 128 bytes,
+            // so up to SectorSize/128 entries fit per sector.
+            var sectorData = new byte[SectorSize];
+            int entriesInThisSector = Math.Min(_directories.Count - i * (SectorSize / 128), SectorSize / 128);
             
             for (int j = 0; j < entriesInThisSector; j++)
             {
-                var dir = _directories[i * 4 + j];
+                var dir = _directories[i * (SectorSize / 128) + j];
                 var entryData = WriteDirectoryEntry(dir);
                 Array.Copy(entryData, 0, sectorData, j * 128, 128);
             }
             
             _writer.Write(sectorData);
-            _writer.Write(new byte[SectorSize - 128]);
+            // remaining bytes already zeroed by new byte[], no need for extra write
         }
     }
 

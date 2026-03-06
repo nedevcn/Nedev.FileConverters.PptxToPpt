@@ -247,16 +247,19 @@ public sealed class PptxParser
         var textBodies = slideXml.Descendants(ns + "txBody");
         foreach (var txBody in textBodies)
         {
-            var paragraphs = txBody.Elements(ns + "p");
+            // paragraphs are typically in the drawing namespace (<a:p>).  Use local
+            // name comparison to find them.
+            var paragraphs = txBody.Elements().Where(e => e.Name.LocalName == "p");
             foreach (var para in paragraphs)
             {
-                var runs = para.Elements(ns + "r");
+                // runs may also be in drawing namespace
+                var runs = para.Elements().Where(e => e.Name.LocalName == "r");
                 foreach (var run in runs)
                 {
-                    var rPr = run.Element(ns + "rPr");
+                    var rPr = run.Elements().FirstOrDefault(e => e.Name.LocalName == "rPr");
                     if (rPr != null)
                     {
-                        var latin = rPr.Element(ns + "latin");
+                        var latin = rPr.Elements().FirstOrDefault(e => e.Name.LocalName == "latin");
                         if (latin != null)
                         {
                             var fontFace = latin.Attribute("typeface")?.Value;

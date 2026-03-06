@@ -35,7 +35,8 @@ public sealed class Converter
 
         foreach (var fontName in presentation.Fonts.Keys)
         {
-            builder.AddFont(fontName);
+            // ensure all fonts are registered; index return value is unused
+            _ = builder.AddFont(fontName);
         }
 
         foreach (var media in presentation.MediaFiles)

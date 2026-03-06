@@ -116,7 +116,7 @@ public sealed class PptDocumentBuilder
         _document.MediaFiles[name] = data;
     }
 
-    public void AddFont(string name, ushort charSet = 1, ushort family = 2)
+    public ushort AddFont(string name, ushort charSet = 1, ushort family = 2)
     {
         if (!_document.Fonts.ContainsKey(name))
         {
@@ -127,6 +127,8 @@ public sealed class PptDocumentBuilder
                 Family = family
             };
         }
+        // index is based on enumeration order; convert keys to list to find position
+        return (ushort)_document.Fonts.Keys.ToList().IndexOf(name);
     }
 
     public void WriteTo(Stream stream)
@@ -299,9 +301,10 @@ public sealed class PptDocumentBuilder
     private List<Record> CreateTextRecords(XElement txBody)
     {
         var records = new List<Record>();
-        var ns = txBody.GetDefaultNamespace();
-
-        var paragraphs = txBody.Elements(ns + "p").ToList();
+        // paragraphs are in the drawing namespace (<a:p>) so default namespace
+        // of txBody is not reliable.  Look for any child element whose local
+        // name is "p".
+        var paragraphs = txBody.Elements().Where(e => e.Name.LocalName == "p").ToList();
 
         foreach (var para in paragraphs)
         {
@@ -313,8 +316,8 @@ public sealed class PptDocumentBuilder
 
     private Record CreateParagraphRecord(XElement para)
     {
-        var ns = para.GetDefaultNamespace();
-
+        // paragraph element may be in a namespace such as drawing;
+        // ignore namespace when looking for runs and text nodes.
         var paraFormat = new Record
         {
             Type = RecordType.RT_TextParaFormatAtom,
@@ -322,19 +325,8 @@ public sealed class PptDocumentBuilder
             Data = CreateParaFormatData()
         };
 
-        var runs = para.Elements(ns + "r").ToList();
-        var textContent = new StringBuilder();
-        
-        foreach (var run in runs)
-        {
-            var t = run.Element(ns + "t");
-            if (t != null)
-            {
-                textContent.Append(t.Value);
-            }
-        }
-
-        var text = textContent.ToString();
+        // gather runs by local name "r" regardless of namespace
+        var runs = para.Elements().Where(e => e.Name.LocalName == "r").ToList();
 
         var headerAtom = new Record
         {
@@ -343,19 +335,39 @@ public sealed class PptDocumentBuilder
             Data = CreateTextHeaderData()
         };
 
-        var bytesAtom = new Record
-        {
-            Type = RecordType.RT_TextBytesAtom,
-            Version = 0x03E6,
-            Data = CreateTextBytesData(text)
-        };
-
         var ms = new MemoryStream();
         var writer = new BinaryWriter(ms);
-        
+
         writer.Write(paraFormat.ToArray());
         writer.Write(headerAtom.ToArray());
-        writer.Write(bytesAtom.ToArray());
+
+        foreach (var run in runs)
+        {
+            // get text content ignoring namespace
+            var t = run.Elements().FirstOrDefault(e => e.Name.LocalName == "t");
+            var runText = t != null ? t.Value : string.Empty;
+
+            // determine formatting information from the run
+            var (fontIndex, bold, italic, fontSize) = GetRunFormat(run);
+
+            // write a char format atom for this run
+            var charFormat = new Record
+            {
+                Type = RecordType.RT_TextCharFormatAtom,
+                Version = 0x03E4,
+                Data = CreateTextCharFormatData(runText.Length, fontIndex, bold, italic, fontSize)
+            };
+            writer.Write(charFormat.ToArray());
+
+            // write the actual text for the run
+            var bytesAtom = new Record
+            {
+                Type = RecordType.RT_TextBytesAtom,
+                Version = 0x03E6,
+                Data = CreateTextBytesData(runText)
+            };
+            writer.Write(bytesAtom.ToArray());
+        }
 
         return new Record
         {
@@ -386,6 +398,67 @@ public sealed class PptDocumentBuilder
         data[3] = 0x00;
         BitConverter.GetBytes((uint)0x00000001).CopyTo(data, 4);
         return data;
+    }
+
+    /// <summary>
+    /// Creates the binary payload for a TextCharFormatAtom.  We only support
+    /// a small subset of formatting (font index, bold, italic) for now.
+    /// </summary>
+    private byte[] CreateTextCharFormatData(int runLength, ushort fontIndex, bool bold, bool italic, ushort fontSize = 0)
+    {
+        // Layout: [length:4][fontIdx:2][size:2][flags:2][reserved:2]
+        var data = new byte[14];
+        BitConverter.GetBytes((uint)runLength).CopyTo(data, 0);
+        BitConverter.GetBytes(fontIndex).CopyTo(data, 4);
+        BitConverter.GetBytes(fontSize).CopyTo(data, 6);
+        ushort flags = 0;
+        if (bold) flags |= 0x0001;
+        if (italic) flags |= 0x0002;
+        BitConverter.GetBytes(flags).CopyTo(data, 8);
+        // remaining 2 bytes reserved (offset 10..11) and extra bytes left zero
+        return data;
+    }
+
+    /// <summary>
+    /// Inspect a &lt;r&gt; run element and determine the corresponding
+    /// font index (ensuring the font is registered) and style flags.
+    /// </summary>
+    private (ushort fontIndex, bool bold, bool italic, ushort size) GetRunFormat(XElement run)
+    {
+        bool bold = false;
+        bool italic = false;
+        ushort fontIndex = 0;
+        ushort size = 0;
+
+        // ignore namespace when inspecting run properties
+        var rPr = run.Elements().FirstOrDefault(e => e.Name.LocalName == "rPr");
+        if (rPr != null)
+        {
+            var bAttr = rPr.Attribute("b")?.Value;
+            if (!string.IsNullOrEmpty(bAttr) && (bAttr == "1" || bAttr.Equals("true", StringComparison.OrdinalIgnoreCase)))
+                bold = true;
+            var iAttr = rPr.Attribute("i")?.Value;
+            if (!string.IsNullOrEmpty(iAttr) && (iAttr == "1" || iAttr.Equals("true", StringComparison.OrdinalIgnoreCase)))
+                italic = true;
+
+            var szAttr = rPr.Attribute("sz")?.Value;
+            if (!string.IsNullOrEmpty(szAttr) && ushort.TryParse(szAttr, out var szValue))
+            {
+                size = szValue;
+            }
+
+            var latin = rPr.Elements().FirstOrDefault(e => e.Name.LocalName == "latin");
+            if (latin != null)
+            {
+                var face = latin.Attribute("typeface")?.Value;
+                if (!string.IsNullOrEmpty(face))
+                {
+                    fontIndex = AddFont(face);
+                }
+            }
+        }
+
+        return (fontIndex, bold, italic, size);
     }
 
     private byte[] CreateTextBytesData(string text)
