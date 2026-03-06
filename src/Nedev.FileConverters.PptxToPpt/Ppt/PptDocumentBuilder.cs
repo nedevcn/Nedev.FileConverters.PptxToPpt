@@ -162,6 +162,13 @@ public sealed class PptDocumentBuilder
             if (groupRecord != null)
                 records.Add(groupRecord);
         }
+        // connectors (cxnSp) are treated similar to shapes
+        var connectors = slide.Xml.Root.Descendants(ns + "cxnSp").ToList();
+        foreach (var cxnXml in connectors)
+        {
+            var conn = CreateConnectorRecord(cxnXml);
+            if (conn != null) records.Add(conn);
+        }
 
         var pictures = slide.Xml.Root.Descendants(ns + "pic").ToList();
         foreach (var picXml in pictures)
@@ -280,8 +287,9 @@ public sealed class PptDocumentBuilder
         return data;
     }
 
-    private Record CreateGroupShapeRecord(XElement groupXml)
+    private Record CreateConnectorRecord(XElement cxnXml)
     {
+        // treat connector as a simple shape for now; ID incremented etc.
         var data = new byte[24];
         BitConverter.GetBytes((uint)0).CopyTo(data, 0);
         BitConverter.GetBytes((uint)_shapeIdCounter++).CopyTo(data, 4);
@@ -289,12 +297,61 @@ public sealed class PptDocumentBuilder
         BitConverter.GetBytes((uint)0x00180000).CopyTo(data, 12);
         BitConverter.GetBytes((uint)0).CopyTo(data, 16);
         BitConverter.GetBytes((uint)0).CopyTo(data, 20);
+        return new Record
+        {
+            Type = RecordType.RT_Shape,
+            Version = 0x0FC8,
+            Data = data
+        };
+    }
+
+    private Record CreateGroupShapeRecord(XElement groupXml)
+    {
+        // create header for the group shape itself
+        var ms = new MemoryStream();
+        var writer = new BinaryWriter(ms);
+
+        var header = new byte[24];
+        BitConverter.GetBytes((uint)0).CopyTo(header, 0);
+        BitConverter.GetBytes((uint)_shapeIdCounter++).CopyTo(header, 4);
+        BitConverter.GetBytes((uint)0).CopyTo(header, 8);
+        BitConverter.GetBytes((uint)0x00180000).CopyTo(header, 12);
+        BitConverter.GetBytes((uint)0).CopyTo(header, 16);
+        BitConverter.GetBytes((uint)0).CopyTo(header, 20);
+        writer.Write(header);
+
+        // recurse into contained elements
+        var ns = groupXml.GetDefaultNamespace();
+        foreach (var sp in groupXml.Descendants(ns + "sp"))
+        {
+            var rec = CreateShapeRecord(sp);
+            if (rec != null) writer.Write(rec.ToArray());
+        }
+        foreach (var gp in groupXml.Descendants(ns + "grpSp"))
+        {
+            // avoid infinite recursion by ensuring it's a direct child
+            if (gp != groupXml)
+            {
+                var rec = CreateGroupShapeRecord(gp);
+                if (rec != null) writer.Write(rec.ToArray());
+            }
+        }
+        foreach (var pic in groupXml.Descendants(ns + "pic"))
+        {
+            var rec = CreatePictureRecord(pic);
+            if (rec != null) writer.Write(rec.ToArray());
+        }
+        foreach (var cxn in groupXml.Descendants(ns + "cxnSp"))
+        {
+            var rec = CreateConnectorRecord(cxn);
+            if (rec != null) writer.Write(rec.ToArray());
+        }
 
         return new Record
         {
             Type = RecordType.RT_GroupShape,
             Version = 0x0FC8,
-            Data = data
+            Data = ms.ToArray()
         };
     }
 

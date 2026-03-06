@@ -266,6 +266,49 @@ namespace Nedev.FileConverters.PptxToPpt.Tests
             using var ms5 = new MemoryStream();
             builder.WriteTo(ms5);
         }
+
+        [Fact]
+        public void GroupShapeRecursesAndConnectorsIncluded()
+        {
+            var xml = @"<sld xmlns=""http://schemas.openxmlformats.org/presentationml/2006/main"" xmlns:a=""http://schemas.openxmlformats.org/drawingml/2006/main"">
+  <cSld>
+    <spTree>
+      <grpSp>
+        <sp>
+          <txBody><a:p><a:r><a:t>Inside</a:t></a:r></a:p></txBody>
+        </sp>
+        <cxnSp/>
+      </grpSp>
+    </spTree>
+  </cSld>
+</sld>";
+            var slide = new PptxSlide { Index = 0, Xml = XDocument.Parse(xml) };
+            var builder = new PptDocumentBuilder();
+            builder.AddSlide(slide);
+
+            // invoke private CreateShapesFromSlide to inspect produced records
+            var method = typeof(PptDocumentBuilder).GetMethod("CreateShapesFromSlide", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var list = (System.Collections.IList)method.Invoke(builder, new object[] { slide, null });
+            // there should be at least a group record plus the extracted children
+            Assert.NotEmpty(list);
+            object? groupRec = null;
+            foreach (var o in list)
+            {
+                var typeProp = o.GetType().GetProperty("Type");
+                if (typeProp != null && (RecordType)typeProp.GetValue(o) == RecordType.RT_GroupShape)
+                {
+                    groupRec = o;
+                    break;
+                }
+            }
+            Assert.NotNull(groupRec);
+            var data = (byte[])groupRec.GetType().GetProperty("Data").GetValue(groupRec);
+
+            // check that inside data we see a shape record header (0x0FEC as little endian bytes EC 0F)
+            AssertExtensions.ContainsSequence(data, new byte[] { 0xEC, 0x0F });
+            // and also connector type (RT_Shape used for connector in our stub)
+            AssertExtensions.ContainsSequence(data, new byte[] { 0xEC, 0x0F });
+        }
     }
 
     internal static class AssertExtensions
